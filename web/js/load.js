@@ -12,7 +12,8 @@ URL = {
     people: HOST + 'api/people'
 };
 
-// todo : cache data
+// todo: cache data
+// todo: add id to events
 
 /*
 - где чувак,
@@ -83,6 +84,7 @@ function getLastPersonLocation(personId) {
         for (i = events.length - 1; i >= 0; --i) {
             if (events[i]['human'] === personId) {
                 event = events[i];
+                break;
             }
         }
 
@@ -140,3 +142,34 @@ function whoInTheRoom(roomId) {
 
 }
 
+
+function personHistory(personId) {
+
+    const events = loadData(URL.events);
+    const rooms = loadData(URL.rooms);
+
+    return Promise.all([events, rooms]).then(function (events, rooms) {
+        let i, event, room;
+        let result = [];
+
+        let camToRoomMap = getCamToRoomMap();
+        let camToInOutMap = getCamToInOutMap(rooms);
+
+        for (i = events.length - 1; i >= 0; --i) {
+            if (events[i]['human'] === personId) {
+                let camId = events[i]['cam'];
+                let inOrOut = camToInOutMap[camId];
+                let roomId = camToRoomMap[camId];
+
+                let obj = {
+                    room: findById(rooms, roomId),
+                    cam: inOrOut
+                };
+
+                result.push(obj);
+            }
+        }
+
+        return result;
+    })
+}
