@@ -1,47 +1,71 @@
+import datetime
+
 import cv2
 import os
 import time
 import json
 import numpy as np
+import dlib
+import skimage
+import sys
 
 import util
+
+detector = dlib.get_frontal_face_detector()
+sp = dlib.shape_predictor('dlib-files/shape_predictor_68_face_landmarks.dat')
+facerec = dlib.face_recognition_model_v1('dlib-files/dlib_face_recognition_resnet_model_v1.dat')
 
 
 class NoFaces(Exception):
     pass
 
 
-def detect_face(img):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    face_cascade = cv2.CascadeClassifier('opencv-files/lbpcascade_frontalface.xml')
-
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5)
-
-    if len(faces) == 0:
-        raise NoFaces()
-
-    (x, y, w, h) = faces[0]
-
-    return cv2.resize(gray[y:y + w, x:x + h], (500, 500)), faces[0]
-
-
 class _Person(object):
 
     def __init__(self, id, data=None):
         self.faces = []
-        self.info = {
-            'id': id,
-            'data': data or {}
-        }
+        self.vecs = []
+        self.info = data or {}
+        if self.info.get('id', id) != id:
+            raise Exception('Read problem - IDs don\'t match')
 
     def save(self):
         os.makedirs('data/{}'.format(self.info['id']))
         with open('data/{}/info.json'.format(self.info['id']), 'w') as f:
             f.write(json.dumps(self.info))
+        with open('data/{}/vecs.json'.format(self.info['id']), 'w') as f:
+            f.write(json.dumps(list(map(list, self.vecs))))
         for idx, face in enumerate(self.faces):
-            cv2.imwrite('data/{}/img_CV2_{}.jpg'.format(self.info['id'], idx), face,
+            cv2.imwrite('data/{}/{}.jpg'.format(self.info['id'], idx), face[:, :, ::-1],
                         [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+
+    def detect_face(self, img, win):
+        dets = detector(img, 1)
+
+        if len(dets) == 0:
+            raise NoFaces()
+
+        largest_det = None
+        l_sq = None
+        for d in dets:
+            win.add_overlay(d)
+            sq = (d.right() - d.left()) * (d.top() - d.bottom())
+            sq = abs(sq)
+            if largest_det is None or sq > l_sq:
+                largest_det = d
+                l_sq = sq
+
+        d = largest_det
+        print("Detection: Left: {} Top: {} Right: {} Bottom: {}".format(
+            d.left(), d.top(), d.right(), d.bottom()))
+        # Get the landmarks/parts for the face in box d.
+        shape = sp(img, d)
+        # Draw the face landmarks on the screen so we can see what face is currently being processed.
+        win.add_overlay(shape, color=dlib.rgb_pixel(0, 255, 0))
+        face_descriptor = facerec.compute_face_descriptor(img, shape)
+
+        self.faces.append(img)
+        self.vecs.append(face_descriptor)
 
 
 class DataManager(object):
@@ -62,25 +86,26 @@ class DataManager(object):
             with open('data/{}/info.json'.format(id)) as f:
                 cls.persons.append(_Person(id, json.loads(f.read())))
             p = cls.persons[-1]
+            with open('data/{}/vecs.json'.format(id)) as f:
+                p.vecs = json.loads(f.read())
             root = os.path.join('data', str(id))
             for face in os.listdir(root):
                 if face.endswith('.jpg'):
-                    p.faces.append(cv2.imread(os.path.join(root, face)))
+                    p.faces.append(cv2.imread(os.path.join(root, face))[:, :, ::-1])
+
+    @classmethod
+    def get_person(cls, id):
+        return cls.persons[id]
 
     @classmethod
     def get_data(cls):
-        faces = []
+        vecs = []
         labels = []
         for p in cls.persons:
-            for image in p.faces:
-                try:
-                    face, rect = detect_face(image)
-                except NoFaces:
-                    pass
-                else:
-                    faces.append(face)
-                    labels.append(int(p.info['id']))
-        return faces, labels
+            vecs += list(p.vecs)
+            print(p.vecs)
+            labels += [p.info['id']] * len(p.vecs)
+        return np.array(vecs), labels
 
     @classmethod
     def add_person(cls):
@@ -96,41 +121,37 @@ class DataManager(object):
             id = mx + 1
         else:
             id = len(cls.persons)
-        person = _Person(id)
+        name = sys.stdin.readline().strip()
+        person = _Person(id, {'name': name})
         if cls.persons:
             cls.persons.append(person)
-        cv2.namedWindow("person")
         vc = cv2.VideoCapture(0)
 
         rval = vc.isOpened()
 
         im_cnt = 0
         save_faces = False
-        while rval and im_cnt < 30:
+        win = dlib.image_window()
+        time_to_start = datetime.datetime.now() + datetime.timedelta(seconds=3)
+        while rval and im_cnt < 10:
             rval, frame = vc.read()
+            image = frame[:, :, ::-1]
+
+            win.clear_overlay()
+            win.set_image(image)
             if save_faces:
-                person.faces.append(frame)
                 try:
-                    _, rect = detect_face(frame)
+                    person.detect_face(image, win)
                 except NoFaces:
                     pass
                 else:
-                    util.draw_rectangle(frame, rect)
-                cv2.imshow("person", frame)
-                im_cnt += 1
-                cv2.waitKey(80)
+                    im_cnt += 1
             else:
-                try:
-                    _, rect = detect_face(frame)
-                except NoFaces:
-                    pass
-                else:
-                    util.draw_rectangle(frame, rect)
-                util.draw_text(frame, 'Press \'y\' to start', 240, 40)
-                cv2.imshow("person", frame)
-                if cv2.waitKey(1) & 0xFF == ord('y'):
-                    print('Pressed y, starting to save')
+                now = datetime.datetime.now()
+                if now >= time_to_start:
                     save_faces = True
+                    win.set_title('Saving...')
+                else:
+                    win.set_title('Seconds to start: {}'.format((time_to_start - now).total_seconds()))
         print('Faces: {}'.format(len(person.faces)))
         person.save()
-        cv2.destroyWindow("person")
