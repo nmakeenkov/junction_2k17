@@ -4,6 +4,7 @@
 import cv2
 import os
 import numpy as np
+import uuid
 
 import data_manager
 import util
@@ -42,13 +43,27 @@ if __name__ == '__main__':
 
     face_recognizer.train(faces, np.array(labels))
 
+    cv2.namedWindow("person")
+    vc = cv2.VideoCapture(0)
+
+    rval = vc.isOpened()
+    while rval:
+        rval, frame = vc.read()
+        predicted_img1 = predict(face_recognizer, frame)
+        if predicted_img1 is not None:
+            cv2.imshow("person", predicted_img1)
+        else:
+            cv2.imshow("person", frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    cv2.destroyWindow("person")
+
     for image__ in os.listdir('test-data'):
         test_img = cv2.imread("test-data/{}".format(image__))
 
         print(image__)
         predicted_img1 = predict(face_recognizer, test_img)
 
-        import uuid
         if predicted_img1 is not None:
             cv2.imshow(str(uuid.uuid4()), predicted_img1)
 

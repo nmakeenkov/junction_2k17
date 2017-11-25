@@ -109,11 +109,23 @@ class DataManager(object):
         while rval and im_cnt < 30:
             rval, frame = vc.read()
             if save_faces:
-                cv2.imshow("person", frame)
                 person.faces.append(frame)
+                try:
+                    _, rect = detect_face(frame)
+                except NoFaces:
+                    pass
+                else:
+                    util.draw_rectangle(frame, rect)
+                cv2.imshow("person", frame)
                 im_cnt += 1
                 cv2.waitKey(80)
             else:
+                try:
+                    _, rect = detect_face(frame)
+                except NoFaces:
+                    pass
+                else:
+                    util.draw_rectangle(frame, rect)
                 util.draw_text(frame, 'Press \'y\' to start', 240, 40)
                 cv2.imshow("person", frame)
                 if cv2.waitKey(1) & 0xFF == ord('y'):
