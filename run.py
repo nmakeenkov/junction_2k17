@@ -2,36 +2,34 @@ from copy import deepcopy
 from collections import Counter
 import json
 
+
 from IPython.display import clear_output
 from matplotlib import pyplot as plt
 from scipy.stats import norm
 import numpy as np
 
-names = [
-    'pidr',
-    'loh',
-    'uebok',
-    'gnida',
-    'govno',
-    'zalupa',
-    'penis',
-    'her',
-    'davalka',
-    'ochko',
-]
+
+names = ["Alex", "John", "Mary"]
+for i in range(50):
+    names += ["guy_"+str(i)]
+for i in range(50):
+    names += ["girl_"+str(i)]
+
 
 room_names = {
-    '-1': 'prachechnaya',
-    '1': 'hata',
-    '2': 'parasha',
+    '-1': 'Hall'
 }
+for i in range(100):
+    room_names[str(i)] = "office_"+str(i)
 
 
-BIG_USERS = [1,7,13]
+printable = False
+
+BIG_USERS = [1,7]
 
 
 colors = [
-	'#DEB887','#5F9EA0','#D2691E','#F08080', 
+	'#000','#5F9EA0','#D2691E','#F08080', 
 	'#008000', '#DC143C','#00FFFF','#00008B',
 	'#008B8B','#B8860B','#A9A9A9','#A9A9A9',
 	'#006400','#BDB76B','#8B008B','#556B2F',
@@ -49,7 +47,8 @@ class Door(object):
         
         
     def check_trace(self, prev, new):
-        
+        if max([prev[0],new[0]]) < self.ptstart[0] or min([prev[0],new[0]]) > self.ptstart[0]:
+            return None        
         try:
             a=(prev[1]-new[1])/(prev[0]-new[0])
         except:
@@ -63,7 +62,6 @@ class Door(object):
             left_to_right = (prev[0] < self.ptend[0] and new[0] > self.ptend[0])
             right_to_left = (new[0] < self.ptend[0] and prev[0] > self.ptend[0])
             if left_to_right:
-                #print 'left to right:', prev, new, self.ptstart, self.ptend
                 return self.right_rn
             if right_to_left:
                 return self.left_rn
@@ -128,11 +126,11 @@ class Area(object):
         prev_Y = self.Y_crowd.copy()
         
         addit = norm.rvs(0., self.speed, size=self.people_number)
-        self.X_crowd_directions = 0.95*self.X_crowd_directions + 0.05*addit
+        self.X_crowd_directions = 0.8*self.X_crowd_directions + 0.2*addit
         self.X_crowd += self.X_crowd_directions
         
         addit = norm.rvs(0., self.speed, size=self.people_number)
-        self.Y_crowd_directions = 0.95*self.Y_crowd_directions + 0.05*addit
+        self.Y_crowd_directions = 0.8*self.Y_crowd_directions + 0.2*addit
         self.Y_crowd += self.Y_crowd_directions
 
         self.X_crowd = [max([self.w*0.05,min([self.w*0.95,x])]) for x in self.X_crowd]
@@ -143,7 +141,8 @@ class Area(object):
         for p, coords in enumerate(zip(self.X_crowd, self.Y_crowd)):
             x,y = coords
             rn = self.get_room_number(x,y)
-            prev_room_number = self.crowd_rooms[p]
+            from copy import deepcopy
+            prev_room_number = deepcopy(self.crowd_rooms[p])
             if not rn == prev_room_number:
                 any_res = False
                 for door in self.doors:
@@ -163,13 +162,26 @@ class Area(object):
             new_Y += [y]
         self.X_crowd = np.array(new_X, dtype='float64')
         self.Y_crowd = np.array(new_Y, dtype='float64')
+        if printable and not np.allclose(prev_room_number, self.crowd_rooms):
+            print 'crowd_rooms:', self.crowd_rooms
+            print 'rooms counts:', json.dumps(
+                {room_names[str(k)]: v for k,v in Counter(self.crowd_rooms).items()},
+                indent=4,
+            )
+            print 'people:', json.dumps(
+                dict(zip(names,[room_names[str(k)] for k in self.crowd_rooms])),
+                indent=4,
+            )
+            print '\n'
+            
+
         
-w,h=1300,500
+w,h=1300,800
 area = Area(
     w=w,
     h=h,
-    people_number=25,
-    speed=6
+    people_number=100,
+    speed=10
 )
 
 
@@ -241,7 +253,7 @@ doors = [
         ptstart=(w*.5,h*.1),
         ptend=(w*.5,h*.35),
         left_rn=3,
-        right_rn=-4
+        right_rn=4
     ),
     Door(
         ptstart=(w*.62,h*.1),
@@ -297,32 +309,26 @@ class Rotary(pantograph.PantographHandler):
         for x,y in zip(area.X_crowd, area.Y_crowd):
             rad = 6
             if i in BIG_USERS:
-                #img_src = '/Users/alaktionov/Desktop/junction_2k17/images/'+str(i)+'.png'
-                #self.draw("image", src=img_src, x=x, y=y, width=self.width, height=self.height)
-                rad = 16
-                self.fill_circle(x,y,rad,color=colors[area.crowd_rooms[i]+1])
+                img_src = '/img/'+str(i)+'.png'
+                self.draw("image", src=img_src, x=x, y=y, width=30, height=30)
+                rad = 0.5
+                self.draw_line(x,y,w,h)
             else:
-                self.fill_rect(x,y,15,15,color=colors[area.crowd_rooms[i]+1])
+                self.fill_circle(x,y,rad,color=colors[area.crowd_rooms[i]+1])
+            #else:
+                #self.fill_rect(x,y,8,8,color=colors[area.crowd_rooms[i]+1])
             i+=1
 
         area.make_iteration()
         
                 
-#         print 'rooms counts:', json.dumps(
-#             {room_names[str(k)]: v for k,v in Counter(self.crowd_rooms).items()}, 
-#             indent=4,
-#         )
-#         print 'people:', json.dumps(
-#             dict(zip(names,[room_names[str(k)] for k in self.crowd_rooms])), 
-#             indent=4,
-#         )
-
 
 if __name__ == '__main__':
-    app = pantograph.PantographApplication([
-    ("Pantograph", "/", Rotary)
-    ])
-    #app = pantograph.SimplePantographApplication(Rotary)
+    #app = pantograph.PantographApplication([
+    #    ("Pantograph", "/", Rotary)
+    #])
+    app = pantograph.SimplePantographApplication(Rotary)
     app.run()
+
 
 
