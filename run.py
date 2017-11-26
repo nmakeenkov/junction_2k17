@@ -7,6 +7,7 @@ from IPython.display import clear_output
 from matplotlib import pyplot as plt
 from scipy.stats import norm
 import numpy as np
+from shapely.geometry import LineString
 
 
 names = ["Alex", "John", "Mary"]
@@ -47,25 +48,19 @@ class Door(object):
         
         
     def check_trace(self, prev, new):
-        if max([prev[0],new[0]]) < self.ptstart[0] or min([prev[0],new[0]]) > self.ptstart[0]:
-            return None        
-        try:
-            a=(prev[1]-new[1])/(prev[0]-new[0])
-        except:
+        line1 = LineString([prev, new])
+        line2 = LineString([self.ptstart, self.ptend])
+
+       
+        res = line1.intersection(line2)
+        if res: 
+            if prev[0] < self.ptstart[0]:
+                return self.right_rn
+            else:
+                return self.left_rn
+        else:
             return None
 
-        b = prev[1] - a*prev[0]
-
-        y_inter=self.ptstart[0]*a+b
-
-        if self.ptstart[1] < y_inter < self.ptend[1]:
-            left_to_right = (prev[0] < self.ptend[0] and new[0] > self.ptend[0])
-            right_to_left = (new[0] < self.ptend[0] and prev[0] > self.ptend[0])
-            if left_to_right:
-                return self.right_rn
-            if right_to_left:
-                return self.left_rn
-        return None
 
 class Room(object):
     def __init__(self, area_w, area_h, left_upper, right_bottom, my_num):
@@ -126,11 +121,11 @@ class Area(object):
         prev_Y = self.Y_crowd.copy()
         
         addit = norm.rvs(0., self.speed, size=self.people_number)
-        self.X_crowd_directions = 0.8*self.X_crowd_directions + 0.2*addit
+        self.X_crowd_directions = 0.9*self.X_crowd_directions + 0.1*addit
         self.X_crowd += self.X_crowd_directions
         
         addit = norm.rvs(0., self.speed, size=self.people_number)
-        self.Y_crowd_directions = 0.8*self.Y_crowd_directions + 0.2*addit
+        self.Y_crowd_directions = 0.9*self.Y_crowd_directions + 0.1*addit
         self.Y_crowd += self.Y_crowd_directions
 
         self.X_crowd = [max([self.w*0.05,min([self.w*0.95,x])]) for x in self.X_crowd]
@@ -180,8 +175,8 @@ w,h=1300,800
 area = Area(
     w=w,
     h=h,
-    people_number=100,
-    speed=10
+    people_number=25,
+    speed=5
 )
 
 
@@ -310,9 +305,9 @@ class Rotary(pantograph.PantographHandler):
             rad = 6
             if i in BIG_USERS:
                 img_src = '/img/'+str(i)+'.png'
-                self.draw("image", src=img_src, x=x, y=y, width=30, height=30)
+                self.draw("image", src=img_src, x=x, y=y, width=60, height=60)
                 rad = 0.5
-                self.draw_line(x,y,w,h)
+                #self.draw_line(x+50,y+100,w,h)
             else:
                 self.fill_circle(x,y,rad,color=colors[area.crowd_rooms[i]+1])
             #else:
